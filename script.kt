@@ -13,10 +13,16 @@ packages = sourceFiles.toPackages()
 
 // Resolve dependencies
 val sourceFilesWithDependencies = sourceFiles.resolveDependencies(packages)
+// TODO resolve dependencies that are not imported
+// e.g., the relationship between InMemoryRepositoryCache and RepositoryCache
+// They're in the same package so there's no import statement to declare the dependency
+// Reminder: A file can use a Class that's in a sub-package of the package it's in
 
-println(sourceFilesWithDependencies)
+// Format for Graphviz
+val graphvizString = sourceFilesWithDependencies.toGraphviz()
 
-TODO https://www.graphviz.org/doc/info/lang.html
+println(graphvizString)
+
 
 
 fun pwd(): File = File(System.getProperty("user.dir"))
@@ -80,6 +86,42 @@ fun List<SourceFile>.resolveDependencies(packages: List<Package>): List<SourceFi
 
 fun SourceFile.toImport(): String = "${this.pkg}.${this.nameWithoutExtension}"
 
+fun List<SourceFileWithDependencies>.toGraphviz(): String {
+    val graphVizLines = this.map { it.toGraphviz().toString() }
+            .map { "     $it" }
+            .joinToString("\n")
+
+    return "graph {\n" +
+            "${graphVizLines}\n" +
+            "}"
+}
+
+fun SourceFileWithDependencies.toGraphviz(): OneToManyGraphVizRelation {
+    val node1 = this.sourceFile.toImport()
+    val connections = this.dependencies.map {
+        when(it) {
+            is ExternalDependency -> it.import
+            is SourceFileWithDependencies -> it.sourceFile.toImport()
+            else -> ""
+        }
+    }
+    return OneToManyGraphVizRelation(node1, connections)
+}
+
+data class OneToOneGraphVizRelation(
+        val node1: String,
+        val node2: String
+) {
+    override fun toString(): String = "\"$node1\" -- \"$node2\""
+}
+
+data class OneToManyGraphVizRelation(
+        val node1: String,
+        val connections: List<String>
+) {
+    override fun toString(): String = "\"$node1\" -- { ${connections.map { "\"$it\"" }.joinToString(" ")}}"
+}
+
 data class Package(
         val name: String,
         val files: List<SourceFile>
@@ -101,4 +143,4 @@ data class ExternalDependency(
 data class SourceFileWithDependencies(
         val sourceFile: SourceFile,
         val dependencies: List<Dependency>
-)
+): Dependency
