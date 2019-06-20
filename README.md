@@ -1,9 +1,11 @@
 # Java Kotlin Class Dependencies
 Visualize Java and Kotlin class dependencies
 
-## Install
+## Building
 
-You gotta have `kscript` installed: https://github.com/holgerbrandl/kscript#installation
+### Install kscript
+
+https://github.com/holgerbrandl/kscript#installation
 
 ## Running
 
