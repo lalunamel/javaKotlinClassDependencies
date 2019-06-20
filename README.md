@@ -13,10 +13,3 @@ Run the script
 
 ## TODO
 
-- resolve dependencies that are not imported
-
-e.g., the relationship between InMemoryRepositoryCache and RepositoryCache
-
-They're in the same package so there's no import statement to declare the dependency
-
-Reminder: A file can use a Class that's in a sub-package of the package it's in
