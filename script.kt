@@ -11,18 +11,16 @@ var packages = sourceFiles.toPackages()
 sourceFiles = sourceFiles.resolveStarImports(packages)
 packages = sourceFiles.toPackages()
 
-// Resolve dependencies
-val sourceFilesWithDependencies = sourceFiles.resolveDependencies(packages)
-// TODO resolve dependencies that are not imported
-// e.g., the relationship between InMemoryRepositoryCache and RepositoryCache
-// They're in the same package so there's no import statement to declare the dependency
-// Reminder: A file can use a Class that's in a sub-package of the package it's in
+// Resolve dependencies declared via import statements
+var sourceFilesWithDependencies = sourceFiles.resolveImportedDependencies(packages)
+
+// Resolve dependencies that are undeclared (i.e., dependencies within the same package)
+sourceFilesWithDependencies = sourceFilesWithDependencies.resolveImplicitDependencies(packages)
 
 // Format for Graphviz
 val graphvizString = sourceFilesWithDependencies.toGraphviz()
 
 println(graphvizString)
-
 
 
 fun pwd(): File = File(System.getProperty("user.dir"))
@@ -79,9 +77,41 @@ fun List<String>.toDependencies(packages: List<Package>): List<Dependency> = thi
     dependency
 }
 
-fun List<SourceFile>.resolveDependencies(packages: List<Package>): List<SourceFileWithDependencies> = this.map { sourceFile ->
+fun List<SourceFile>.resolveImportedDependencies(packages: List<Package>): List<SourceFileWithDependencies> = this.map { sourceFile ->
     val dependencies = sourceFile.imports.toDependencies(packages)
     SourceFileWithDependencies(sourceFile, dependencies)
+}
+
+fun List<Package>.sourceFiles(): List<SourceFile> =
+        this.flatMap { it.files }
+
+fun Package.children(packages: List<Package>): List<Package> =
+        packages.filter { it.name.startsWith(this.name) && it.name != this.name }
+
+fun SourceFile.otherClassesInPackage(packages: List<Package>): List<SourceFile> {
+    val rootPackage: Package = packages.first { it.name == this.pkg }
+    val subPackages: List<Package> = rootPackage.children(packages)
+
+    val packageSearchSpace = listOf(rootPackage) + subPackages
+
+    val otherClassesInPackages = packageSearchSpace.sourceFiles() - this
+
+    return otherClassesInPackages
+}
+
+fun SourceFile.getImplicitDependencies(packages: List<Package>): List<Dependency> {
+    val listOfOtherClassesInSamePackage: List<SourceFile> = this.otherClassesInPackage(packages)
+    val contentsOfFile = this.file.readText()
+    val classesUsedInFile = listOfOtherClassesInSamePackage.filter {
+        val regex = "[^\\w]${it.nameWithoutExtension}[^\\w]".toRegex()
+        regex.find(contentsOfFile) != null
+    }
+    return classesUsedInFile
+}
+
+fun List<SourceFileWithDependencies>.resolveImplicitDependencies(packages: List<Package>): List<SourceFileWithDependencies> = this.map { sourceFile ->
+    val implicitDependencies = sourceFile.sourceFile.getImplicitDependencies(packages)
+    sourceFile.copy(dependencies = sourceFile.dependencies + implicitDependencies)
 }
 
 fun SourceFile.toImport(): String = "${this.pkg}.${this.nameWithoutExtension}"
@@ -101,7 +131,7 @@ fun SourceFileWithDependencies.toGraphviz(): OneToManyGraphVizRelation {
     val connections = this.dependencies.map {
         when(it) {
             is ExternalDependency -> it.import
-            is SourceFileWithDependencies -> it.sourceFile.toImport()
+            is SourceFile -> it.toImport()
             else -> ""
         }
     }
@@ -127,14 +157,14 @@ data class Package(
         val files: List<SourceFile>
 )
 
+interface Dependency
+
 data class SourceFile(
         val file: File,
         val nameWithoutExtension: String,
         val pkg: String,
         val imports: List<String>
 ): Dependency
-
-interface Dependency
 
 data class ExternalDependency(
         val import: String
@@ -143,4 +173,4 @@ data class ExternalDependency(
 data class SourceFileWithDependencies(
         val sourceFile: SourceFile,
         val dependencies: List<Dependency>
-): Dependency
+)
