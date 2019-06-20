@@ -8,4 +8,5 @@ You gotta have `kscript` installed: https://github.com/holgerbrandl/kscript#inst
 ## Running
 
 Move the script to the project you'd like to analyize
+
 Run the script
