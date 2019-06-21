@@ -1,8 +1,30 @@
 #!/usr/bin/env kscript
 
 import java.io.File
+import kotlin.system.exitProcess
 
-val allFiles = pwd().allFiles()
+val argumentsAreValid = validateArguments(args.toList())
+if(!argumentsAreValid) {
+    println("Required arguments:")
+    println("   --source path/to/source/directory")
+    println("   --destination directory/to/save/class-diagram.gv")
+    // TODO better help message
+    exitProcess(1)
+}
+
+val argumentPairs = getArgumentPairs(args.toList())
+val sourceArg = argumentPairs["--source"]
+val destinationArg = argumentPairs["--destination"]
+
+val source = File(sourceArg).canonicalFile
+val destination = File("$destinationArg${File.separator}${source.nameWithoutExtension}-class-diagram.gv").canonicalFile
+
+
+// ===========
+// == Begin ==
+// ===========
+
+val allFiles = source.allFiles()
 
 var sourceFiles = allFiles.withKtAndJava().toSourceFiles()
 var packages = sourceFiles.toPackages()
@@ -20,10 +42,12 @@ sourceFilesWithDependencies = sourceFilesWithDependencies.resolveImplicitDepende
 // Format for Graphviz
 val graphvizString = sourceFilesWithDependencies.toGraphviz()
 
-println(graphvizString)
+destination.writeText(graphvizString)
+println("GraphViz .gv file written to $destination")
 
-
-fun pwd(): File = File(System.getProperty("user.dir"))
+// ===========
+// === End ===
+// ===========
 
 fun File.allFiles(): List<File> = this.walkTopDown().toList()
 
@@ -82,21 +106,12 @@ fun List<SourceFile>.resolveImportedDependencies(packages: List<Package>): List<
     SourceFileWithDependencies(sourceFile, dependencies)
 }
 
-fun List<Package>.sourceFiles(): List<SourceFile> =
-        this.flatMap { it.files }
-
-fun Package.children(packages: List<Package>): List<Package> =
-        packages.filter { it.name.startsWith(this.name) && it.name != this.name }
-
 fun SourceFile.otherClassesInPackage(packages: List<Package>): List<SourceFile> {
-    val rootPackage: Package = packages.first { it.name == this.pkg }
-    val subPackages: List<Package> = rootPackage.children(packages)
+    val thisPackage: Package = packages.first { it.name == this.pkg }
 
-    val packageSearchSpace = listOf(rootPackage) + subPackages
+    val otherClassesInThisPackage = thisPackage.files - this
 
-    val otherClassesInPackages = packageSearchSpace.sourceFiles() - this
-
-    return otherClassesInPackages
+    return otherClassesInThisPackage
 }
 
 fun SourceFile.getImplicitDependencies(packages: List<Package>): List<Dependency> {
@@ -121,7 +136,7 @@ fun List<SourceFileWithDependencies>.toGraphviz(): String {
             .map { "     $it" }
             .joinToString("\n")
 
-    return "graph {\n" +
+    return "digraph {\n" +
             "${graphVizLines}\n" +
             "}"
 }
@@ -142,14 +157,14 @@ data class OneToOneGraphVizRelation(
         val node1: String,
         val node2: String
 ) {
-    override fun toString(): String = "\"$node1\" -- \"$node2\""
+    override fun toString(): String = "\"$node1\" -> \"$node2\""
 }
 
 data class OneToManyGraphVizRelation(
         val node1: String,
         val connections: List<String>
 ) {
-    override fun toString(): String = "\"$node1\" -- { ${connections.map { "\"$it\"" }.joinToString(" ")}}"
+    override fun toString(): String = "\"$node1\" -> { ${connections.map { "\"$it\"" }.joinToString(" ")}}"
 }
 
 data class Package(
@@ -174,3 +189,28 @@ data class SourceFileWithDependencies(
         val sourceFile: SourceFile,
         val dependencies: List<Dependency>
 )
+
+fun validateArguments(arguments: List<String>): Boolean {
+    try {
+        val argPairs = getArgumentPairs(arguments)
+
+        val sourceArg = argPairs["--source"]
+        val destinationArg = argPairs["--destination"]
+        val helpArgumentExists = argPairs.containsKey("--help")
+
+        return if(helpArgumentExists) {
+            false
+        } else {
+            val validArguments = !sourceArg.isNullOrBlank() && !destinationArg.isNullOrBlank()
+            if(!validArguments) {
+                println("Invalid arguments!")
+            }
+            validArguments
+        }
+    } catch(e: Exception) {
+        return false
+    }
+}
+
+fun getArgumentPairs(arguments: List<String>): Map<String, String> =
+        arguments.chunked(2).map { it[0] to (it.getOrNull(1) ?: "") }.toMap()
